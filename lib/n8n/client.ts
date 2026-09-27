@@ -2,7 +2,14 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 // The only place that calls n8n. One event = one webhook path.
-export type N8nEvent = "quote-request";
+export type N8nEvent = "quote-request" | "lead-created";
+
+// A stable, UUID-shaped idempotency-key for one business operation on one record:
+// the same record always gets the same key, so a repeated call is a repeat for n8n.
+export function operationKey(event: N8nEvent, recordId: string) {
+  const hex = createHash("sha256").update(`${event}:${recordId}`).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
 
 const TIMEOUT_MS = 10_000;
 const RETRY_DELAYS_MS = [1_000, 3_000]; // at most 3 attempts in total

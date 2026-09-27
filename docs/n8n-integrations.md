@@ -7,6 +7,17 @@
 | event | напрям | шлях n8n | режим | власник |
 |---|---|---|---|---|
 | `quote-request` | Next.js → n8n → колбек | `/webhook/quote-request` | Respond to Webhook 202 + колбек | _уточнити_ |
+| `lead-created` | Next.js → n8n | `/webhook/lead-created` | Immediately (200), без колбека | _уточнити_ |
+
+## `lead-created` — нова заявка з публічної форми
+
+- **Хто запускає:** Server Action `submitLead` (`app/actions.ts`), форма на `/`. Лід зберігається, виклик n8n — в
+  `after()`, відвідувач його не чекає.
+- **Запит у n8n:** `POST ${N8N_WEBHOOK_BASE_URL}/lead-created`, ті самі три заголовки; тіло
+  `{ "version": 1, "event": "lead-created", "data": { "leadId", "company", "budget", "source", "createdAt" } }`.
+  Контактів, IP, user agent і сирих даних форми в n8n немає. `idempotency-key` — стабільний для ліда
+  (`operationKey("lead-created", leadId)`), тож повтор для n8n — дублікат.
+- **Відповідь:** 200 (Immediately), текст не парситься.
 
 ## `quote-request` — PDF-кошторис (40–90 с)
 
