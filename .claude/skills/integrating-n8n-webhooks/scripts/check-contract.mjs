@@ -20,6 +20,9 @@ Options:
 
 Scanned: app/, src/, lib/, components/, pages/, root *.ts|*.js files, .env.example
 (not node_modules, .next, .git, .claude, tools, docs, materials). Comments are ignored.
+An n8n call is a fetch that mentions any N8N_* variable (directly or through a const holding it),
+a /webhook/ or /webhook-test/ URL or port 5678. A callback route is a route.ts under a path with
+n8n, *callback* or *webhook*, or one that reads x-n8n-* headers; the modules it imports are checked too.
 
 Checks:
   C1  no-test-webhook-url     no /webhook-test/ URL in code or .env.example
@@ -144,35 +147,65 @@ function callText(file, start) {
 const findLines = (file, re) => file.code.flatMap((line, i) => (re.test(line) ? [i + 1] : []));
 
 // ---------------------------------------------------------------- classify
-const N8N_REF = /process\.env\.N8N_WEBHOOK_\w+|["'`][^"'`]*\/webhook(-test)?\/|:5678\b|N8N_WEBHOOK_\w+/;
+// An n8n reference: any N8N_* env var, a /webhook/ or /webhook-test/ URL, or the n8n port.
+const N8N_REF = /process\.env\.N8N_\w+|\bN8N_\w+|["'`][^"'`]*\/webhook(-test)?\/|:5678\b/;
 const isClientModule = (f) => /^(src\/)?lib\/n8n\/client\.(ts|js|mjs)$/.test(f.path);
 const clientModule = codeFiles.find(isClientModule) ?? null;
+const byPath = new Map(codeFiles.map((f) => [f.path, f]));
 
-// fetch calls that go to n8n: the call (or the 3 lines before it) mention an n8n URL/env var,
-// or the fetch lives in the client module.
-const n8nFetches = codeFiles.flatMap((f) =>
-  f.code.flatMap((line, i) => {
+// Identifiers that hold an n8n URL: `const url = process.env.N8N_…` (also `?? "…/webhook/…"`).
+const n8nIdentifiers = (f) =>
+  [...f.code.join("\n").matchAll(/(?:const|let|var)\s+(\w+)\s*=\s*([^;\n]*)/g)].filter(([, , init]) => N8N_REF.test(init)).map(([, name]) => name);
+
+// fetch calls that go to n8n: the call (or the 3 lines before it) mention an n8n URL/env var or an
+// identifier holding one, or the fetch lives in the client module.
+const n8nFetches = codeFiles.flatMap((f) => {
+  const ids = n8nIdentifiers(f);
+  const idRe = ids.length ? new RegExp(`\\b(${ids.join("|")})\\b`) : null;
+  return f.code.flatMap((line, i) => {
     if (!/\bfetch\s*\(/.test(line)) return [];
-    const context = f.code.slice(Math.max(0, i - 3), i).join("\n") + "\n" + callText(f, i);
-    return isClientModule(f) || N8N_REF.test(context) ? [{ file: f, line: i + 1, call: callText(f, i) }] : [];
-  }),
-);
+    const call = callText(f, i);
+    const context = f.code.slice(Math.max(0, i - 3), i).join("\n") + "\n" + call;
+    return isClientModule(f) || N8N_REF.test(context) || idRe?.test(call) ? [{ file: f, line: i + 1, call }] : [];
+  });
+});
 
-const clientImport = /from\s+["'](@\/|\.{1,2}\/)+(src\/)?lib\/n8n\/client["']|from\s+["']@\/lib\/n8n\/client["']/;
-const importedClientNames = (f) => {
-  const m = f.code.join("\n").match(/import\s*\{([^}]*)\}\s*from\s*["'][^"']*lib\/n8n\/client["']/);
-  return m ? m[1].split(",").map((s) => s.trim().split(/\s+as\s+/).pop()).filter(Boolean) : [];
-};
+// Resolve "@/x", "./x", "../x" imports to scanned files.
+function resolveImport(from, spec) {
+  let base;
+  if (spec.startsWith("@/")) base = spec.slice(2);
+  else if (spec.startsWith(".")) base = [...from.path.split("/").slice(0, -1), ...spec.split("/")].reduce((acc, part) => (part === ".." ? acc.slice(0, -1) : part === "." ? acc : [...acc, part]), []).join("/");
+  else return null;
+  for (const ext of ["", ".ts", ".tsx", ".js", ".mjs", "/index.ts", "/index.js"]) if (byPath.has(base + ext)) return byPath.get(base + ext);
+  if (spec.startsWith("@/") && byPath.has(`src/${base}.ts`)) return byPath.get(`src/${base}.ts`);
+  return null;
+}
+const importsOf = (f) =>
+  [...f.code.join("\n").matchAll(/import\s*(?:type\s*)?\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)].map(([, names, spec]) => ({
+    names: names.split(",").map((s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/)).filter((p) => p[0]).map((p) => ({ imported: p[0], local: p[1] ?? p[0] })),
+    file: resolveImport(f, spec),
+  }));
+
+// Exported functions whose body contains an n8n fetch: calling them means calling n8n.
+const n8nFunctions = new Map(); // file -> Set(name)
+for (const x of n8nFetches) {
+  const decls = x.file.code.flatMap((l, i) => [...l.matchAll(/export\s+(?:async\s+)?function\s+(\w+)|export\s+const\s+(\w+)\s*=/g)].map((m) => ({ name: m[1] ?? m[2], line: i + 1 })));
+  const owner = decls.filter((d) => d.line <= x.line).pop();
+  if (owner) (n8nFunctions.get(x.file) ?? n8nFunctions.set(x.file, new Set()).get(x.file)).add(owner.name);
+}
+const n8nCallNames = (f) => importsOf(f).flatMap(({ names, file }) => (file && n8nFunctions.has(file) ? names.filter((n) => n8nFunctions.get(file).has(n.imported)).map((n) => n.local) : []));
 const isServerActionFile = (f) => /^\s*["']use server["']/m.test(f.code.slice(0, 5).join("\n"));
 
-const callbackFiles = codeFiles.filter((f) => /x-n8n-signature/i.test(f.code.join("\n")));
+// Callback routes: Route Handlers under a path with n8n/callback/webhook, or that read x-n8n-* headers.
+const callbackFiles = codeFiles.filter((f) => /x-n8n-(signature|timestamp)/i.test(f.code.join("\n")));
 const callbackRoutes = codeFiles.filter(
-  (f) => /(^|\/)route\.(ts|js)$/.test(f.path) && (/\/api\/n8n\//.test(f.path) || /x-n8n-signature/i.test(f.code.join("\n"))),
+  (f) => /(^|\/)route\.(ts|js)$/.test(f.path) && (/\/(n8n|[^/]*callback[^/]*|[^/]*webhook[^/]*)\//i.test(f.path) || /x-n8n-/i.test(f.code.join("\n"))),
 );
-const callbackHelperText = codeFiles
-  .filter((f) => /^(src\/)?lib\/n8n\//.test(f.path))
-  .map((f) => f.code.join("\n"))
-  .join("\n");
+// Code a callback route relies on: its own text plus the modules it imports, plus lib/n8n/*.
+const helperText = (r) =>
+  [r, ...importsOf(r).map((i) => i.file).filter(Boolean), ...codeFiles.filter((f) => /^(src\/)?lib\/n8n\//.test(f.path))]
+    .map((f) => f.code.join("\n"))
+    .join("\n");
 
 const usesN8n = n8nFetches.length > 0 || callbackRoutes.length > 0 || codeFiles.some((f) => /process\.env\.N8N_/.test(f.code.join("\n")));
 
@@ -230,8 +263,10 @@ check("C4", "single-client-module", (fail, note) => {
 check("C5", "server-only-client", (fail, note) => {
   if (!usesN8n) return note("no n8n usage found");
   if (!clientModule) {
-    const at = n8nFetches[0];
-    return fail(at ? at.file.path : "lib/n8n/client.ts", at ? at.line : 0, "no lib/n8n/client.ts module for n8n calls");
+    const firstPerFile = [...new Map(n8nFetches.map((x) => [x.file.path, x])).values()];
+    if (!firstPerFile.length) return fail("lib/n8n/client.ts", 0, "no lib/n8n/client.ts module for n8n calls");
+    for (const at of firstPerFile) fail(at.file.path, at.line, "no lib/n8n/client.ts module for n8n calls");
+    return;
   }
   const first = clientModule.code.map((l, i) => [l.trim(), i + 1]).find(([l]) => l.length > 0);
   if (!first || !/^import\s+["']server-only["'];?$/.test(first[0])) fail(clientModule.path, first ? first[1] : 1, 'first statement must be import "server-only"');
@@ -254,7 +289,7 @@ check("C7", "request-headers", (fail, note) => {
 check("C8", "action-uses-after", (fail, note) => {
   let seen = 0;
   for (const f of codeFiles.filter(isServerActionFile)) {
-    const names = importedClientNames(f);
+    const names = n8nCallNames(f);
     const callRe = names.length ? new RegExp(`\\b(${names.join("|")})\\s*\\(`) : null;
     const calls = [
       ...n8nFetches.filter((x) => x.file === f).map((x) => x.line),
@@ -282,7 +317,7 @@ check("C9", "callback-raw-body", (fail, note) =>
 check("C10", "verify-before-parse", (fail, note) =>
   perRoute((r) => {
     const verify = findLines(r, /timingSafeEqual|\bverif\w*\s*\(/i)[0];
-    const parse = findLines(r, /JSON\.parse\s*\(|\bparse(?!Int|Float)\w*\s*\(/)[0];
+    const parse = findLines(r, /JSON\.parse\s*\(|\bparse(?!Int|Float)\w*\s*\(|\.\s*json\s*\(\s*\)/)[0];
     if (!verify) fail(r.path, 1, "no signature verification call found in the callback route");
     else if (parse && parse < verify) fail(r.path, parse, `body parsed on line ${parse} before the signature check on line ${verify}`);
   }, fail, note));
@@ -293,20 +328,20 @@ check("C11", "signature-compare", (fail, note) => {
     for (const l of findLines(f, /(signature|digest|hmac|expected)\w*\s*(!==?|===?)|(!==?|===?)\s*\w*(signature|digest|hmac|expected)/i))
       if (!/\.length\s*(!==?|===?)|(!==?|===?)\s*[\w.]*\.length/.test(f.code[l - 1]) && !/===?\s*(null|undefined)|typeof/.test(f.code[l - 1]))
         fail(f.path, l, "signature compared with ===/!==; use crypto.timingSafeEqual after a length check");
-  const all = callbackRoutes.map((r) => r.code.join("\n")).join("\n") + callbackHelperText;
-  if (!/timingSafeEqual/.test(all)) fail(callbackRoutes[0]?.path ?? callbackFiles[0].path, 1, "no crypto.timingSafeEqual in the callback code");
+  for (const r of callbackRoutes) if (!/timingSafeEqual/.test(helperText(r))) fail(r.path, 1, "no crypto.timingSafeEqual in the callback code");
+  if (!callbackRoutes.length && !callbackFiles.some((f) => /timingSafeEqual/.test(f.code.join("\n")))) fail(callbackFiles[0].path, 1, "no crypto.timingSafeEqual in the callback code");
 });
 
 check("C12", "timestamp-window", (fail, note) =>
   perRoute((r) => {
-    const all = r.code.join("\n") + callbackHelperText;
+    const all = helperText(r);
     if (!/x-n8n-timestamp/i.test(all)) fail(r.path, 1, "callback does not read x-n8n-timestamp");
     else if (!/\b300\b|5\s*\*\s*60\b/.test(all)) fail(r.path, 1, "no 300 s window for x-n8n-timestamp");
   }, fail, note));
 
 check("C13", "callback-idempotency", (fail, note) =>
   perRoute((r) => {
-    if (!/["'`]idempotency-key["'`]/i.test(r.code.join("\n"))) fail(r.path, 1, "callback route does not read the idempotency-key header");
+    if (!/["'`]idempotency-key["'`]/i.test(helperText(r))) fail(r.path, 1, "callback route does not read the idempotency-key header");
   }, fail, note));
 
 check("C14", "no-edge-runtime", (fail) => {
@@ -319,7 +354,8 @@ check("C15", "no-sensitive-logs", (fail, note) => {
     ...(clientModule ? [clientModule] : []),
     ...callbackRoutes,
     ...codeFiles.filter((f) => /^(src\/)?lib\/n8n\//.test(f.path)),
-    ...codeFiles.filter((f) => isServerActionFile(f) && (clientImport.test(f.code.join("\n")) || n8nFetches.some((x) => x.file === f))),
+    ...n8nFetches.map((x) => x.file),
+    ...codeFiles.filter((f) => isServerActionFile(f) && n8nCallNames(f).length > 0),
   ];
   if (!scope.length) return note("no n8n code found");
   for (const f of new Set(scope))
