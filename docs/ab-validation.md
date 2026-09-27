@@ -324,6 +324,17 @@
   «Готово. Кошторис готовий. Відкрити кошторис (PDF)». Публічна форма ліда на `/` — 200 за 171 мс;
   `POST /webhook/lead-created -> 202 … auth=ok idempotency=new`, тіло 162 Б. Журнал сервера — лише рядки
   `n8n -> … attempt=1 outcome=202 …` і `n8n <- quote-request.completed … stored`; персональних даних — 0 збігів.
+- **Те саме вручну в браузері (з JavaScript), DevTools → Network** — людина в Chrome, застосунок гілки на
+  `:3001`, той самий мок (`--mode respond-202 --delay 5000`):
+  - `/quotes/new` → «Надіслати»: запит Server Action **`new` — 23 мс** (3,3 кБ). Сторінка статусу далі сама
+    оновлюється (`<id>?_rsc` кожні ~5 с, 0,6 кБ; 3,1 кБ — коли прийшов статус «Готово» з посиланням на PDF). Мок:
+    `POST /webhook/quote-request -> 202 in 3 ms auth=ok idempotency=new` → через 5 с
+    `callback POST http://127.0.0.1:3001/api/n8n/quote-request -> 202 in 40 ms`. Посилання на PDF веде на
+    синтетичний `files.example.test` (його дає мок) — у браузері `ERR_NAME_NOT_RESOLVED`, як і очікувано.
+  - Форма заявки на `/` (подія `lead-created`, доведена руками): запит — **153 мс**; мок
+    `POST /webhook/lead-created -> 202 in 3 ms auth=ok idempotency=new`, тіло 162 Б.
+  - Журнал сервера за весь ручний сценарій — три рядки `n8n -> …`/`n8n <- …`; назви компанії, email, опису чи
+    тексту нотаток — 0 збігів.
 - **Рядок у `docs/n8n-integrations.md`:** `quote-request` (з прогону B) і `lead-created` (доданий під час
   доведення).
 
