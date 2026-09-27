@@ -70,6 +70,8 @@
 | `server-auth-actions` | `9eeca2d` | `app/actions.ts` | `updateLeadStatus` і `deleteLead` перевіряють сесію, належність ліда до workspace користувача й допустимість статусу **всередині** дії | (без заміру) атака відтворюється: `deleteLead` від Marta (workspace `brightline`) і з підробленим cookie `leaddesk_session=anything` → HTTP 200, `db:deleteLead` ×2, `lead_0023`/`lead_0024` → 404 | (без заміру) ті самі запити → 500 `Lead not found` / редирект на `/login`, `db:deleteLead` ×0, ліди на місці; власник видаляє свій лід — працює | прямий `POST` з заголовком `Next-Action: <id deleteLead>` (id — з `.next/server/server-reference-manifest.json`) |
 | `server-serialization` | `795d701` | `app/dashboard/page.tsx`, `components/leads-table.tsx` | у клієнтську `LeadsTable` ідуть лише `id`, `fullName`, `company`, `status`, `createdAt` (тип `LeadRow`) замість повного `Lead` | HTML **424 592 Б**, RSC **315 197 Б**; у HTML по 172 входження `ipAddress`, `rawPayload`, `internalNotes` | HTML **111 377 Б (−74 %)**, RSC **31 257 Б (−90 %)**; жодного з цих полів | `curl … \| wc -c`, `grep -oE 'ipAddress\|rawPayload\|internalNotes'` |
 
+- Виправлення Task A — рівно ці чотири коміти `fix(<rule-id>)`. Коміти `fix(notes)` (`2792611`, знахідка Verify у
+  Task B) і `fix(n8n)` (`268a50b`, доведення фічі в Task D) до Task A не належать і правил Vercel не реалізують.
 - Чому для головного заміру обрали `async-parallel`: це саме скарга клієнта («дашборд понад 2 с»), а ефект
   прямо видно в TTFB. Для решти числа теж зняли, бо це було дешево.
 - `server-cache-react` не змінив TTFB — і це очікувано: layout, `DashboardHeader` і сторінка рендеряться
