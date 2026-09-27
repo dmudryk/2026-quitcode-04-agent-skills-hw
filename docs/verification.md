@@ -8,13 +8,14 @@
 
 ## Скіли видно у свіжій сесії
 
-- Як перевіряли: окремий процес `MSYS_NO_PATHCONV=1 claude -p "/context"` з кореня репозиторію → розділ Skills.
+- Як перевіряли: окремий процес `MSYS_NO_PATHCONV=1 claude -p "/context"` з кореня репозиторію → розділ Skills
+  (останній запуск — після коміту `f21226c`: усі три скіли з джерелом `Project`).
 
 | Skill | Звідки (Project / Personal / вбудований) | Примітка |
 |---|---|---|
-| `vercel-react-best-practices` | Project | після коміту `2e7e639`, ~120 токенів опису |
-| `building-client-form` | | |
-| `integrating-n8n-webhooks` | | |
+| `vercel-react-best-practices` | Project | з коміту `2e7e639`, ~120 токенів опису |
+| `building-client-form` | Project | з коміту `80c2e9b`, ~320 токенів |
+| `integrating-n8n-webhooks` | Project | з коміту `f21226c`, ~290 токенів |
 
 - Особисті скіли, які теж видно: лише вбудовані (`Built-in`: `code-review`, `simplify`, `run` …) і скіли акаунта
   claude.ai (`claude.ai sync`: `docs`, `pdf`, `docx`, `pptx`, `xlsx`, `learn`, `skill-creator`, `canvas-design`,
@@ -163,7 +164,8 @@
   `NEXT_PUBLIC_*`, query string, журналі, відповіді чи git; вимога синхронно чекати довгий воркфлоу або
   приймати колбек без підпису; персональні дані в n8n понад мінімум чи весь рядок з БД; зміна воркфлоу в n8n
   чи інший контракт; нова залежність чи `runtime = "edge"`. Без винятків «якщо задача цього потребує».
-- **SHA коміту зі скілом (BASE для Task D):** BASE_SHA_PLACEHOLDER
+- **SHA коміту зі скілом (BASE для Task D):** `f21226c` (`skills: add integrating-n8n-webhooks …`). У ньому є виправлення Task A, форма нотатки з
+  Task B і всі три скіли; `/quotes` і перероблений виклик n8n — ще ні.
 - **Що скіл змінив у собі після прогонів:** _(заповнюється в Task D)_
 
 **`check-contract.mjs` на коді `main`** (`git archive main` → `../leaddesk-main`):
