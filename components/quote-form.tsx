@@ -32,9 +32,10 @@ export function QuoteForm() {
             maxLength={120}
             defaultValue={values?.company}
             aria-invalid={errors.company ? true : undefined}
+            aria-describedby={errors.company ? "quote-company-error" : undefined}
             className={inputClass}
           />
-          {errors.company && <span className="mt-1 block text-xs text-red-600">{errors.company}</span>}
+          {errors.company && <span id="quote-company-error" className="mt-1 block text-xs text-red-600">{errors.company}</span>}
         </label>
         <label className="block text-sm font-medium">
           Email
@@ -46,9 +47,10 @@ export function QuoteForm() {
             maxLength={200}
             defaultValue={values?.email}
             aria-invalid={errors.email ? true : undefined}
+            aria-describedby={errors.email ? "quote-email-error" : undefined}
             className={inputClass}
           />
-          {errors.email && <span className="mt-1 block text-xs text-red-600">{errors.email}</span>}
+          {errors.email && <span id="quote-email-error" className="mt-1 block text-xs text-red-600">{errors.email}</span>}
         </label>
       </div>
 
@@ -61,9 +63,10 @@ export function QuoteForm() {
           maxLength={DESCRIPTION_MAX_LENGTH}
           defaultValue={values?.description}
           aria-invalid={errors.description ? true : undefined}
+          aria-describedby={errors.description ? "quote-description-error" : undefined}
           className={inputClass}
         />
-        {errors.description && <span className="mt-1 block text-xs text-red-600">{errors.description}</span>}
+        {errors.description && <span id="quote-description-error" className="mt-1 block text-xs text-red-600">{errors.description}</span>}
       </label>
 
       <label className="block text-sm font-medium">
@@ -77,9 +80,10 @@ export function QuoteForm() {
           step={1}
           defaultValue={values?.budget}
           aria-invalid={errors.budget ? true : undefined}
+          aria-describedby={errors.budget ? "quote-budget-error" : undefined}
           className={inputClass}
         />
-        {errors.budget && <span className="mt-1 block text-xs text-red-600">{errors.budget}</span>}
+        {errors.budget && <span id="quote-budget-error" className="mt-1 block text-xs text-red-600">{errors.budget}</span>}
       </label>
 
       <button
