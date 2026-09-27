@@ -61,11 +61,17 @@ export async function markQuoteTriggered(id: string, result: TriggerResult) {
 }
 
 export async function completeQuoteFromCallback(payload: CallbackPayload) {
-  const quote = [...quotes.values()].find(
-    (q) =>
-      (payload.requestIdempotencyKey !== null && q.idempotencyKey === payload.requestIdempotencyKey) ||
-      q.jobId === payload.jobId,
-  );
+  // Match by the request's idempotency key only if the quote has no jobId yet (the callback may
+  // arrive before markQuoteTriggered) or the same one: never let the key and jobId point at two quotes.
+  const byKey =
+    payload.requestIdempotencyKey === null
+      ? undefined
+      : [...quotes.values()].find((q) => q.idempotencyKey === payload.requestIdempotencyKey);
+  const quote = byKey
+    ? byKey.jobId === null || byKey.jobId === payload.jobId
+      ? byKey
+      : undefined
+    : [...quotes.values()].find((q) => q.jobId === payload.jobId);
   if (!quote) return false;
   quote.jobId = payload.jobId;
   quote.status = payload.status === "completed" ? "ready" : "failed";
