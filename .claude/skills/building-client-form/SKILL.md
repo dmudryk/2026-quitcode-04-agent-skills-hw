@@ -13,7 +13,7 @@ description: >-
   бібліотеку автентифікації, суто клієнтських контролів без збереження даних.
 metadata:
   owner: Studio Nova / QuitCode
-  version: "0.1.0"
+  version: "0.1.1"
 ---
 
 # Клієнтська форма: патерн команди
@@ -78,6 +78,9 @@ const values = state.status === "invalid" ? state.values : {};
 ```
 
 - `action={formAction}`, **не** `onSubmit` + `preventDefault`: інакше форма не працює без JS.
+- Id запису (лід, проєкт) — прихованим полем `<input type="hidden" name="leadId" value={id} />`, **не**
+  `useActionState(action.bind(null, id), …)`: у Next.js 16.3.5 зв'язана так дія без JavaScript не відповідає
+  зовсім. Id з форми — недовірений ввід: у дії перевіряємо тип і належність (крок 3).
 - `defaultValue` з `state.values` обов'язковий: після дії React 19 скидає некеровані поля, і без нього
   введене зникає навіть після помилки валідації.
 - Кожне поле: видимий `<label htmlFor>` + `id`; помилка — окремий елемент з `id`, пов'язаний через
@@ -96,7 +99,7 @@ const values = state.status === "invalid" ? state.values : {};
 - [ ] 3. Права на ресурс перевірено (запис належить workspace/користувачу з сесії).
 - [ ] 4. Дія повертає лише { status, … } (+ errors/values при "invalid"), жодного рядка з бази.
 - [ ] 5. Листи, вебхуки, аудит — в after(); у дії немає await на зовнішній сервіс.
-- [ ] 6. useActionState + <form action={formAction}>; немає onSubmit з preventDefault.
+- [ ] 6. useActionState + <form action={formAction}>; немає onSubmit з preventDefault і .bind() дії.
 - [ ] 7. label/htmlFor, aria-invalid, aria-describedby, підсумок role="alert"; defaultValue зі state.values.
 - [ ] 8. Жодного console.log/console.error з formData, values чи персональними даними.
 ```
