@@ -45,8 +45,8 @@ production URL, коди n8n — [references/response-modes.md](references/respo
    тривалістю воркфлоу — асинхронний: 202 + колбек.
 2. `lib/n8n/client.ts` за шаблоном: `triggerWorkflow(event, data, { idempotencyKey, correlationId, withCallback })`.
 3. Server Action — публічний POST-ендпоінт: сесія/права (або свідомо публічна форма) і валідація всередині
-   (Vercel `server-auth-actions`). Запис зі статусом `queued`, `idempotencyKey` і `correlationId` у ньому;
-   виклик n8n — в `after()` (Vercel `server-after-nonblocking`); користувачу — `{ status, id }` або редирект на
+   (Vercel [`server-auth-actions`](../vercel-react-best-practices/rules/server-auth-actions.md)). Запис зі статусом `queued`, `idempotencyKey` і `correlationId` у ньому;
+   виклик n8n — в `after()` (Vercel [`server-after-nonblocking`](../vercel-react-best-practices/rules/server-after-nonblocking.md)); користувачу — `{ status, id }` або редирект на
    сторінку статусу.
 4. Колбек `app/api/n8n/[event]/route.ts` — строго в порядку з таблиці вище (шаблон — `code-templates.md`).
    Запис стану — **до** відповіді 2xx.

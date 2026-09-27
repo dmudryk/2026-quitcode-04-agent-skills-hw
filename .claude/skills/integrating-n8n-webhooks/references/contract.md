@@ -56,9 +56,9 @@
 повідомлення для Immediately).
 
 **Хто викликає:**
-- дія з UI — Server Action: сесія/права/валідація всередині (Vercel `server-auth-actions`);
+- дія з UI — Server Action: сесія/права/валідація всередині (Vercel [`server-auth-actions`](../../vercel-react-best-practices/rules/server-auth-actions.md));
 - Server Action зберігає запис зі статусом `queued`, повертає `{ status, id }`, а виклик n8n із повторами —
-  в `after()` (Vercel `server-after-nonblocking`). Причина — не лише швидкість: Next.js виконує Server Actions
+  в `after()` (Vercel [`server-after-nonblocking`](../../vercel-react-best-practices/rules/server-after-nonblocking.md)). Причина — не лише швидкість: Next.js виконує Server Actions
   по одній на клієнта, довге очікування блокує наступну дію;
 - не-React клієнт (cron, інший сервіс) — Route Handler;
 - ніколи `export const runtime = "edge"`: у Next.js 16 `edge` застарілий, а потрібен `node:crypto`.
