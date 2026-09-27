@@ -143,6 +143,17 @@ export type CallbackPayload = {
   documentUrl: string | null;
 };
 
+// The document link is rendered as <a href>: accept only http(s), never javascript: and friends.
+function httpUrlOrNull(value: unknown) {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 // Runs only AFTER the signature check. Returns null when the shape is wrong or the
 // unsigned idempotency-key header does not match the signed body.
 export function parseCallback(rawBody: string, pathEvent: string, idempotencyKey: string): CallbackPayload | null {
@@ -163,12 +174,15 @@ export function parseCallback(rawBody: string, pathEvent: string, idempotencyKey
   if (typeof jobId !== "string" || (status !== "completed" && status !== "failed")) return null;
   if (idempotencyKey !== `${jobId}:${event}`) return null;
 
+  const documentUrl = status === "completed" ? httpUrlOrNull(result?.documentUrl) : null;
+  if (status === "completed" && !documentUrl) return null;
+
   return {
     event,
     jobId,
     status,
     requestIdempotencyKey: typeof requestIdempotencyKey === "string" ? requestIdempotencyKey : null,
-    documentUrl: typeof result?.documentUrl === "string" ? result.documentUrl : null,
+    documentUrl,
   };
 }
 ```
@@ -322,7 +336,9 @@ export async function markQuote(id: string, patch: Partial<Pick<Quote, "status" 
   const q = quotes.get(id); if (q) Object.assign(q, patch);
 }
 export async function completeQuoteFromCallback(p: CallbackPayload) {
-  const q = [...quotes.values()].find((x) => (p.requestIdempotencyKey && x.idempotencyKey === p.requestIdempotencyKey) || x.jobId === p.jobId);
+  // By the request key only while the quote has no jobId yet or the same one; otherwise by jobId.
+  const byKey = p.requestIdempotencyKey === null ? undefined : [...quotes.values()].find((x) => x.idempotencyKey === p.requestIdempotencyKey);
+  const q = byKey ? (byKey.jobId === null || byKey.jobId === p.jobId ? byKey : undefined) : [...quotes.values()].find((x) => x.jobId === p.jobId);
   if (!q) return false;
   q.jobId = p.jobId; q.status = p.status === "completed" ? "ready" : "failed"; q.documentUrl = p.documentUrl;
   return true;
