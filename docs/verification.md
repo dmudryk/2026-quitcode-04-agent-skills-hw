@@ -132,3 +132,144 @@
   заміна `bind` на приховане поле `leadId` — допомогла (200, ~0,4 с). Виправлення коду — окремий коміт
   `2792611`; щоб наступна форма не повторила помилку, у скіл додано правило «id — прихованим полем, не
   `.bind()`» і пункт чекліста (коміт `7f2cacb`, версія 0.1.1). Це межа скіла, яку показав його ж розділ Verify.
+
+## Task C — `integrating-n8n-webhooks`
+
+Тут скіл лише пакують. Застосовує його агент у прогоні **B** (Task D) — доказ спрацювання, журнал мока й
+час відповіді форми — у `docs/ab-validation.md`.
+
+- **Що в `SKILL.md`, а що в `references/`.** `SKILL.md` (113 рядків, `description` 838 символів): контракт
+  таблицею на одну сторінку, 8 кроків, чекліст із 10 пунктів, правила зупинки, Verify і перелік файлів.
+  У `references/` — те, що потрібно лише під час роботи: `contract.md` (змінні, запит, повтори, колбек
+  по кроках з причинами, журнали, ліміти), `response-modes.md` (режими вебхука, правило 100 с / 524, тестовий
+  vs production URL, коди n8n), `n8n-setup.md` (налаштування воркфлоу словами для клієнта, відомі пастки,
+  реєстр), `code-templates.md` (шаблони коду). Усі посилання — прямо з `SKILL.md`, без ланцюжків. Записку
+  не копіювали: переписано під агента (що робити), причини — коротко в `contract.md`. Правила Vercel
+  `server-auth-actions` і `server-after-nonblocking` — лише за id.
+- **Шаблони коду перевірені, а не написані «з голови».** Їх зібрано в тимчасовій копії проєкту поза
+  репозиторієм (`git archive HEAD`, без скілів) і прогнано наскрізно з моком `--mode respond-202`: відправка
+  форми — 303 за 45 мс; мок — `POST /webhook/quote-request -> 202 … auth=ok idempotency=new` з усіма трьома
+  заголовками; через 3 с `callback POST … -> 202`; сторінка статусу `processing` → `ready` з посиланням на
+  PDF; у журналі застосунку лише `n8n -> quote-request attempt=1 outcome=202 … bytes=288 sha256=…`. Перший
+  прогін знайшов пастку: сховище в `Map` на рівні модуля — колбек отримав **400**, бо Route Handler і Server
+  Action — різні бандли з різними копіями модуля. Перенесли сховище на `globalThis` (як `lib/db.ts` LeadDesk)
+  — 202. Це правило тепер у `SKILL.md` (крок 5) і `code-templates.md`. Копію після перевірки в гілку не
+  переносили: фічу пише агент у прогоні B.
+- **`scripts/send-signed-callback.mjs`** (необов'язковий) проти роуту з шаблону — 11/11: unknown-event 404,
+  wrong-content-type 415, too-large 413, no-signature / bad-signature / stale-timestamp / future-timestamp /
+  reformatted-body 401, key-mismatch 400, valid 202, duplicate 200 `{"duplicate":true}`.
+- **`scripts/mock-n8n.mjs`** — копія `tools/mock-n8n.mjs` (`cmp` — ідентичні).
+- **Правила зупинки:** тестовий URL у коді/`.env.example`/конфігу; секрет у Client Component,
+  `NEXT_PUBLIC_*`, query string, журналі, відповіді чи git; вимога синхронно чекати довгий воркфлоу або
+  приймати колбек без підпису; персональні дані в n8n понад мінімум чи весь рядок з БД; зміна воркфлоу в n8n
+  чи інший контракт; нова залежність чи `runtime = "edge"`. Без винятків «якщо задача цього потребує».
+- **SHA коміту зі скілом (BASE для Task D):** BASE_SHA_PLACEHOLDER
+- **Що скіл змінив у собі після прогонів:** _(заповнюється в Task D)_
+
+**`check-contract.mjs` на коді `main`** (`git archive main` → `../leaddesk-main`):
+
+```
+check-contract: ../leaddesk-main
+scanned 28 code files + .env.example
+
+C1  no-test-webhook-url     FAIL
+      .env.example:6  test webhook URL (/webhook-test/) in .env.example
+C2  no-public-n8n-env       PASS
+C3  env-contract            FAIL
+      .env.example:1  missing N8N_WEBHOOK_BASE_URL
+      .env.example:1  missing N8N_WEBHOOK_TOKEN
+      .env.example:1  missing N8N_CALLBACK_SECRET
+      .env.example:1  missing APP_BASE_URL
+      .env.example:6  N8N_WEBHOOK_URL is not a contract key
+      app/actions.ts:54  reads N8N_WEBHOOK_URL, not a contract key
+C4  single-client-module    FAIL
+      app/actions.ts:54  fetch to n8n outside lib/n8n/client.ts
+C5  server-only-client      FAIL
+      app/actions.ts:54  no lib/n8n/client.ts module for n8n calls
+C6  fetch-timeout           FAIL
+      app/actions.ts:54  fetch to n8n without signal: AbortSignal.timeout(...)
+C7  request-headers         FAIL
+      app/actions.ts:54  request without header(s): x-n8n-token, idempotency-key, x-correlation-id
+C8  action-uses-after       FAIL
+      app/actions.ts:54  Server Action calls n8n outside after(): the user waits for n8n
+C9  callback-raw-body       PASS  (n/a: no n8n callback route found)
+C10 verify-before-parse     PASS  (n/a: no n8n callback route found)
+C11 signature-compare       PASS  (n/a: no n8n callback code found)
+C12 timestamp-window        PASS  (n/a: no n8n callback route found)
+C13 callback-idempotency    PASS  (n/a: no n8n callback route found)
+C14 no-edge-runtime         PASS
+C15 no-sensitive-logs       PASS
+
+7 FAIL, 8 PASS
+main exit=1
+```
+
+**Що скрипт побачив на навмисно поганому коді.** Перевіркам C9–C13 на `main` нема що дивитись (колбека ще
+немає), тож зробили дві тимчасові теки (після перевірки видалені). Перша — роут з `request.json()`,
+`===` для підпису, `runtime = "edge"`, `console.log(body)`; клієнт без `server-only`, з
+`NEXT_PUBLIC_N8N_URL` і `/webhook-test/`; `.env.example` зі «справжнім» токеном:
+
+```
+check-contract: <тимчасова тека>/bad-callback
+scanned 2 code files + .env.example
+
+C1  no-test-webhook-url     FAIL
+      lib/n8n/client.ts:2  test webhook URL (/webhook-test/) in code
+      .env.example:1  test webhook URL (/webhook-test/) in .env.example
+C2  no-public-n8n-env       FAIL
+      lib/n8n/client.ts:2  N8N_* variable with NEXT_PUBLIC_ prefix reaches the client bundle
+C3  env-contract            FAIL
+      .env.example:1  missing APP_BASE_URL
+      .env.example:1  N8N_WEBHOOK_BASE_URL must end with /webhook
+      .env.example:2  N8N_WEBHOOK_TOKEN must be a change-me-… placeholder
+C4  single-client-module    PASS
+C5  server-only-client      FAIL
+      lib/n8n/client.ts:1  first statement must be import "server-only"
+C6  fetch-timeout           FAIL
+      lib/n8n/client.ts:2  fetch to n8n without signal: AbortSignal.timeout(...)
+C7  request-headers         FAIL
+      lib/n8n/client.ts:2  request without header(s): x-n8n-token, idempotency-key, x-correlation-id
+C8  action-uses-after       PASS  (n/a: no Server Action calls n8n)
+C9  callback-raw-body       FAIL
+      app/api/n8n/[event]/route.ts:6  request.json() in callback: the signature must be checked on the raw body
+      app/api/n8n/[event]/route.ts:1  callback does not read the raw body with request.text()
+C10 verify-before-parse     FAIL
+      app/api/n8n/[event]/route.ts:1  no signature verification call found in the callback route
+C11 signature-compare       FAIL
+      app/api/n8n/[event]/route.ts:10  signature compared with ===/!==; use crypto.timingSafeEqual after a length check
+      app/api/n8n/[event]/route.ts:1  no crypto.timingSafeEqual in the callback code
+C12 timestamp-window        FAIL
+      app/api/n8n/[event]/route.ts:1  callback does not read x-n8n-timestamp
+C13 callback-idempotency    FAIL
+      app/api/n8n/[event]/route.ts:1  callback route does not read the idempotency-key header
+C14 no-edge-runtime         FAIL
+      app/api/n8n/[event]/route.ts:3  runtime = "edge": the contract needs node:crypto
+C15 no-sensitive-logs       FAIL
+      app/api/n8n/[event]/route.ts:7  log line mentions "body": no bodies, personal data, tokens or signatures in logs
+
+13 FAIL, 2 PASS
+exit=1
+```
+
+Друга — для перевірок, яким у першій теці не було що ламати: `JSON.parse` **до** перевірки підпису і
+Server Action, що чекає n8n без `after()` (решта файлів — шаблони; показано C8 і C10):
+
+```
+C8  action-uses-after       FAIL
+      app/quotes/actions.ts:5  Server Action calls n8n outside after(): the user waits for n8n
+C10 verify-before-parse     FAIL
+      app/api/n8n/[event]/route.ts:5  body parsed on line 5 before the signature check on line 6
+2 FAIL, 13 PASS
+exit=1
+```
+
+Отже, кожна з 15 перевірок хоч раз дала FAIL на поганому коді. На шаблонах із `code-templates.md` (та сама
+тимчасова копія) C1, C2, C5, C9–C15 — PASS; FAIL лишились лише на старому виклику n8n у `submitLead`
+(C3, C4, C6, C7, C8), який приводимо до контракту в Task D. `--changed-since main` на робочій гілці: 0 FAIL
+(старі FAIL позначено «outside --changed-since»); невідомий ref — код виходу 2.
+
+**`check-contract.mjs` на фінальному коді** (після перенесення прогону B — 0 FAIL):
+
+```
+(заповнюється в Task D)
+```
