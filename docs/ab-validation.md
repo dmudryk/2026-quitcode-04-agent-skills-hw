@@ -70,11 +70,25 @@
   `node_modules/next/dist/docs/01-app/02-guides/server-actions.md`, `backend-for-frontend.md` (там приклад вебхука
   з токеном у заголовку/query), `after.md`, `refresh.md`, `route.md`; решта — загальні знання («Webhook node must
   respond immediately», Bearer-токен на колбек). Наявний код дав патерн форми (`app/actions.ts`, `lib/lead-form.ts`).
-- **Запитання агента:** жодного. **Фінальної відповіді немає:** після `npm run lint` + `npm run build` (обидва
+- **Запитання агента:** жодного. **Під час прогону фінальної відповіді не було:** після `npm run lint` + `npm run build` (обидва
   успішні) агент хотів перевірити фічу наживо — власний мок на 5679 і `next start` на 3100, потім скрипт
   `run-e2e.mjs`; три відмови, після другої зупинки прогін завершено. Останні повідомлення агента: «Adding the new
   variables to `.env.example` (placeholders only; I'm not touching `.env.local`)», «Now lint and build to check
   types…». Тривалість 13 хв 20 с (12:15:30–12:28:50 UTC).
+- **Фінальна відповідь** — отримана **після** прогону, однаковим для A і B повідомленням у тій самій сесії
+  («Підсумуй коротко, що зроблено і що лишилось. Нічого не змінюй і не запускай.», `claude -p --resume
+  b6df9a30-…` з забороненими `Edit/Write/Bash/PowerShell`; 1 крок, без інструментів; стан копії до й після —
+  однаковий). Скорочено:
+  > Сторінка, форма, Server Action, ендпоінт для зворотного виклику і сторінка статусу готові. `npm run lint` пройшов
+  > без зауважень, `npm run build` зібрався успішно. Але вживу потік ще ніхто не запускав. […] **Ендпоінт для n8n**
+  > (`app/api/quotes/[id]/callback/route.ts`): `POST`, заголовок `Authorization: Bearer <токен>`, тіло
+  > `{status:"ready", pdfUrl}` або `{status:"failed"}`. […] **Узгодити з реальним воркфлоу `quote-request`.** Я його
+  > не бачив, тож формат даних — моє припущення: `quoteId, company, email, description, budget, callback{url,
+  > token}`. У n8n потрібно поставити у вузлі Webhook режим «Respond: Immediately», наприкінці додати HTTP Request
+  > на `callback.url` з токеном […]
+
+  Агент сам фіксує, що протокол із n8n він **вигадав** («моє припущення») і що n8n доведеться налаштовувати під
+  його код.
 - **Змінені файли** (`git diff --cached --stat base`): `.env.example` (+8), `app/api/quotes/[id]/callback/route.ts`
   (36), `app/quotes/[id]/page.tsx` (73), `app/quotes/actions.ts` (40), `app/quotes/new/page.tsx` (34),
   `components/quote-form.tsx` (89), `components/quote-status-poller.tsx` (21), `lib/data.ts` (+4), `lib/db.ts` (+52),
@@ -165,11 +179,23 @@
   `globalThis`; статус не відкочується, якщо колбек прийшов раніше за відповідь 202; `/quotes/[id]` з
   автооновленням і «прострочено» після 5 хв; `.env.example` з 4 ключами контракту; реєстр
   `docs/n8n-integrations.md` з інструкцією для налаштування n8n.
-- **Запитання агента:** жодного. **Фінальної відповіді немає** — так само, як в A: після lint, build і
+- **Запитання агента:** жодного. **Під час прогону фінальної відповіді не було** — так само, як в A: після lint, build і
   `check-contract` («Lint and my contract checks pass with 0 failures; the full-project run shows 6 pre-existing
   failures in the old `submitLead` flow, which I'll address later») агент хотів прогнати мок і застосунок на 3100
   зі своїх тестових скриптів; відмова, після другої зупинки прогін завершено. Останнє повідомлення: «Build passes.
   Next, an end-to-end run against the offline n8n mock…». Тривалість 12 хв 29 с (12:29:41–12:42:10 UTC).
+- **Фінальна відповідь** — так само, як в A, **після** прогону тим самим повідомленням (`claude -p --resume
+  214e99a9-…`, без змін і запусків; 1 крок, без інструментів; стан копії до й після — однаковий). Скорочено:
+  > Нічого не змінював і не запускав. Коротко: код написано, lint, build і перевірка контракту проходять.
+  > Наскрізної перевірки з моком n8n не було. **Що зроблено:** усе за контрактом зі скіла
+  > `integrating-n8n-webhooks` […] **Перевірено:** `npm run lint` пройшов без помилок, `npm run build` успішний.
+  > `check-contract.mjs --changed-since HEAD` — 0 FAIL, 15 PASS. **Що лишилось:** […] Email у n8n **не
+  > передається** […] Якщо воркфлоу сам надсилає PDF клієнтові, email треба додати. […] **Старий код порушує
+  > контракт** (я його не чіпав: це поза задачею). Перевірка всього проєкту дає 6 FAIL: `app/actions.ts:58`:
+  > `submitLead` викликає n8n напряму […] `.env.example:6`: тестова адреса `/webhook-test/`. Варто окремою задачею
+  > перевести `lead-created` на `lib/n8n/client.ts`.
+
+  Саме ці 6 FAIL старого коду й довелось доробити після перенесення (див. нижче).
 - **Змінені файли** (`git diff --cached --stat base`): `.env.example` (+11), `app/api/n8n/[event]/route.ts` (63),
   `app/quotes/[id]/page.tsx` (105), `app/quotes/actions.ts` (47), `app/quotes/layout.tsx` (20),
   `app/quotes/new/page.tsx` (28), `components/quote-form.tsx` (94), `components/quote-status-refresher.tsx` (19),
@@ -238,6 +264,7 @@
 | Тіла чи персональні дані в журналі сервера | немає | немає |
 | Змінених файлів | 12 (+538) | 13 (+730) |
 | Запитання агента | немає | немає |
+| Підсумок агента про протокол n8n | «формат даних — моє припущення» | «усе за контрактом зі скіла» |
 | Тривалість сесії | 13 хв 20 с | 12 хв 29 с |
 
 ## Перенесення прогону B у гілку (фіча)
