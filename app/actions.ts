@@ -102,10 +102,11 @@ export type AddLeadNoteState =
   | { status: "ok" }
   | { status: "error" };
 
-// The form binds leadId on the client (`addLeadNote.bind(null, leadId)`), so it
-// is untrusted input: requireLeadInCurrentWorkspace checks its type and owner.
+// leadId comes from a hidden form field, not from `.bind()`: in Next.js 16.3.5 a
+// bound action in useActionState never responds when submitted without
+// JavaScript. It is untrusted input: requireLeadInCurrentWorkspace checks its
+// type and that the lead belongs to the user's workspace.
 export async function addLeadNote(
-  leadId: string,
   _prevState: AddLeadNoteState,
   formData: FormData,
 ): Promise<AddLeadNoteState> {
@@ -116,8 +117,10 @@ export async function addLeadNote(
     return { status: "invalid", errors: parsed.errors, values: parsed.values };
   }
 
+  let leadId: string;
   try {
-    await requireLeadInCurrentWorkspace(leadId);
+    const lead = await requireLeadInCurrentWorkspace(formData.get("leadId"));
+    leadId = lead.id;
     const saved = await db.appendLeadNote(leadId, parsed.data.text);
     if (!saved) throw new Error("Lead not found");
   } catch (error) {

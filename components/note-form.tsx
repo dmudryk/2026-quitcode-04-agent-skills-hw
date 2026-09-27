@@ -7,12 +7,13 @@ import { NOTE_MAX_LENGTH } from "@/lib/note-form";
 const initialState: AddLeadNoteState = { status: "idle" };
 
 export function NoteForm({ leadId }: { leadId: string }) {
-  const [state, formAction, pending] = useActionState(addLeadNote.bind(null, leadId), initialState);
+  const [state, formAction, pending] = useActionState(addLeadNote, initialState);
   const errors = state.status === "invalid" ? state.errors : {};
   const values = state.status === "invalid" ? state.values : {};
 
   return (
     <form action={formAction} className="space-y-2" noValidate>
+      <input type="hidden" name="leadId" value={leadId} />
       {state.status === "invalid" && (
         <p role="alert" className="text-red-700">
           Нотатку не збережено: виправте поле нижче.
