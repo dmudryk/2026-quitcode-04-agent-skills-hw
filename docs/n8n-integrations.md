@@ -6,8 +6,8 @@
 
 | event | напрям | шлях n8n | режим | власник |
 |---|---|---|---|---|
-| `quote-request` | Next.js → n8n → колбек | `/webhook/quote-request` | Respond to Webhook 202 + колбек | _уточнити_ |
-| `lead-created` | Next.js → n8n | `/webhook/lead-created` | Immediately (200), без колбека | _уточнити_ |
+| `quote-request` | Next.js → n8n → колбек | `/webhook/quote-request` | Respond to Webhook 202 + колбек | Denys Mudryk |
+| `lead-created` | Next.js → n8n | `/webhook/lead-created` | Immediately (200), без колбека | Denys Mudryk |
 
 ## `lead-created` — нова заявка з публічної форми
 
