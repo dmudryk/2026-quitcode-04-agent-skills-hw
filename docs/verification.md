@@ -88,3 +88,47 @@
     контракту в Task D; зміна тут дала б прогону A частину відповіді «задарма».
 - `npm run lint` і `npm run build` — без помилок після кожного з чотирьох комітів (скрипт заміру спершу
   запускає обидва й зупиняється на помилці).
+
+## Task B — `building-client-form`
+
+- Скіл: `.claude/skills/building-client-form/SKILL.md` (коміт `80c2e9b`), `name` = тека, `description` —
+  921 символ (що + коли + тригери + «не для»), 125 рядків; перевірено `js-yaml`.
+- Запит у свіжій сесії (скіл не названо) — окремий процес Claude Code 2.1.283, модель `claude-opus-5-5[1m]`,
+  з кореня репозиторію:
+  `claude -p --output-format stream-json --verbose --permission-mode acceptEdits --allowedTools "Skill,Read,Grep,Glob,Edit,Write" --disallowedTools "Bash,NotebookEdit,WebFetch,WebSearch" < prompt.txt`
+  (Bash заборонено, щоб сесія нічого не встановлювала й не запускала; lint/build/Verify — окремо, нижче):
+  > На сторінці ліда в дашборді (/dashboard/leads/[id]) додай форму «Додати нотатку»: одне текстове поле до
+  > 500 символів; нотатка дописується до внутрішніх нотаток ліда.
+- **Чи спрацював скіл і як це видно:** так, з першої спроби. У журналі сесії (`stream-json`) — виклик
+  інструмента `Skill` з `"skill":"building-client-form"` (2 згадки: виклик і результат), далі 14 `Read`,
+  4 `Grep`, 1 `Glob`, 7 `Edit`, 2 `Write`; 35 кроків, 181 с. Фінальна відповідь агента сама посилається на
+  «патерн скіла `building-client-form`». `description` міняти не довелось.
+- **Що зроблено (файли), коміт `bc46808` — код сесії без змін:**
+  `lib/note-form.ts` (чиста `parseNoteForm`: `trim`, нормалізація CRLF, ліміт 500),
+  `app/actions.ts` (`addLeadNote`: `getCurrentUser()` → валідація → `requireLeadInCurrentWorkspace` →
+  `db.appendLeadNote` → `after(() => logAudit(…))` → `revalidatePath` → `{ status }`; у `catch` журнал лише
+  `error.name`), `lib/db.ts` (`appendLeadNote`), `components/note-form.tsx` (`useActionState`, `label/htmlFor`,
+  `aria-invalid`, `aria-describedby`, `role="alert"`, `role="status"`, `defaultValue={values.text}`),
+  `app/dashboard/leads/[id]/page.tsx` (блок нотаток видно завжди, під ним форма).
+- **Пункти Verify зі скіла — результат кожного** (продакшн-збірка, `next start -p 3001`; відправка «без JS»
+  емулювалась так, як її робить браузер з вимкненим JavaScript: звичайний `multipart/form-data` POST з
+  прихованими полями `$ACTION_*`, які React рендерить у `<form>`, і заголовком `Origin`):
+
+  | Пункт Verify | Результат |
+  |---|---|
+  | `npm run lint`, `npm run build` | без помилок |
+  | Порожня відправка | 200; текст «Напишіть текст нотатки», `aria-invalid="true"`, `aria-describedby` містить `note-text-error`, є `role="alert"` |
+  | Уведене не зникає після помилки | 560 символів → «Не більше 500 символів», текст лишився в `<textarea>` (`defaultValue`) |
+  | Відправка без JavaScript | **спершу FAIL** (див. нижче), після виправлення — 200 за ~0,4 с |
+  | Дія без сесії | cookie `leaddesk_session=forged` → 303 на `/login`, `db:appendLeadNote` +0 |
+  | Чужий лід | прихований `leadId` підмінено на `lead_0182` (workspace `brightline`) → «Не вдалося зберегти нотатку», `db:appendLeadNote` +0 |
+  | Журнал сервера без персональних даних | нотатка з `verify.person@example.test` і `+380501112233` збережена й видна на сторінці; у журналі `next start` їх немає — лише `db:…` і `lead.note_added failed: Error` (від випадку «чужий лід») |
+  | Повільне — в `after()` | `db:insertAuditEntry` +1 після успішної відправки; відповідь дії його не чекає |
+
+- **Що знайшов Verify і що змінили.** Сесія передала id ліда через `useActionState(addLeadNote.bind(null, leadId), …)`.
+  З JavaScript це працює, але відправка **без JS** не отримувала жодного байта відповіді за 15–20 с (сервер
+  встигав відрендерити сторінку до `db:getLead`, далі — тиша). Контрольна перевірка: форма заявки на `/`
+  (без `bind`) тим самим способом відповідає 200 за 49 мс; прибирання `getCurrentUser()` не допомогло, а
+  заміна `bind` на приховане поле `leadId` — допомогла (200, ~0,4 с). Виправлення коду — окремий коміт
+  `2792611`; щоб наступна форма не повторила помилку, у скіл додано правило «id — прихованим полем, не
+  `.bind()`» і пункт чекліста (коміт `7f2cacb`, версія 0.1.1). Це межа скіла, яку показав його ж розділ Verify.
