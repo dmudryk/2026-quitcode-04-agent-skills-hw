@@ -9,7 +9,8 @@ const initialState: AddLeadNoteState = { status: "idle" };
 export function NoteForm({ leadId }: { leadId: string }) {
   const [state, formAction, pending] = useActionState(addLeadNote, initialState);
   const errors = state.status === "invalid" ? state.errors : {};
-  const values = state.status === "invalid" ? state.values : {};
+  // Restore the typed text after a validation error and after a failed save alike.
+  const values = state.status === "invalid" || state.status === "error" ? state.values : {};
 
   return (
     <form action={formAction} className="space-y-2" noValidate>

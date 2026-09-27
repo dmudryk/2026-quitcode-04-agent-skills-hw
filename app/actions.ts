@@ -106,7 +106,7 @@ export type AddLeadNoteState =
   | { status: "idle" }
   | { status: "invalid"; errors: Partial<Record<NoteFormField, string>>; values: Partial<NoteFormData> }
   | { status: "ok" }
-  | { status: "error" };
+  | { status: "error"; values: Partial<NoteFormData> };
 
 // leadId comes from a hidden form field, not from `.bind()`: in Next.js 16.3.5 a
 // bound action in useActionState never responds when submitted without
@@ -132,7 +132,8 @@ export async function addLeadNote(
   } catch (error) {
     unstable_rethrow(error);
     console.error(`lead.note_added failed: ${error instanceof Error ? error.name : "UnknownError"}`);
-    return { status: "error" };
+    // Give the text back so the form can restore it: the user did nothing wrong.
+    return { status: "error", values: { text: parsed.data.text } };
   }
 
   after(() => logAudit("lead.note_added", leadId));
