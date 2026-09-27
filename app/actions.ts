@@ -2,10 +2,13 @@
 
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { unstable_rethrow } from "next/navigation";
+import { after } from "next/server";
 import { db } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { getCurrentUser, getWorkspace } from "@/lib/data";
 import { parseLeadForm, type LeadFormField } from "@/lib/lead-form";
+import { parseNoteForm, type NoteFormData, type NoteFormField } from "@/lib/note-form";
 import { LEAD_STATUSES, type LeadStatus } from "@/lib/types";
 
 const PUBLIC_FORM_WORKSPACE_ID = "ws_studio_nova";
@@ -91,4 +94,39 @@ export async function deleteLead(id: string) {
 
   await db.deleteLead(id);
   revalidatePath("/dashboard");
+}
+
+export type AddLeadNoteState =
+  | { status: "idle" }
+  | { status: "invalid"; errors: Partial<Record<NoteFormField, string>>; values: Partial<NoteFormData> }
+  | { status: "ok" }
+  | { status: "error" };
+
+// The form binds leadId on the client (`addLeadNote.bind(null, leadId)`), so it
+// is untrusted input: requireLeadInCurrentWorkspace checks its type and owner.
+export async function addLeadNote(
+  leadId: string,
+  _prevState: AddLeadNoteState,
+  formData: FormData,
+): Promise<AddLeadNoteState> {
+  await getCurrentUser();
+
+  const parsed = parseNoteForm(formData);
+  if (!parsed.ok) {
+    return { status: "invalid", errors: parsed.errors, values: parsed.values };
+  }
+
+  try {
+    await requireLeadInCurrentWorkspace(leadId);
+    const saved = await db.appendLeadNote(leadId, parsed.data.text);
+    if (!saved) throw new Error("Lead not found");
+  } catch (error) {
+    unstable_rethrow(error);
+    console.error(`lead.note_added failed: ${error instanceof Error ? error.name : "UnknownError"}`);
+    return { status: "error" };
+  }
+
+  after(() => logAudit("lead.note_added", leadId));
+  revalidatePath(`/dashboard/leads/${leadId}`);
+  return { status: "ok" };
 }
