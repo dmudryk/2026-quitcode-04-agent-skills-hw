@@ -166,7 +166,14 @@
   чи інший контракт; нова залежність чи `runtime = "edge"`. Без винятків «якщо задача цього потребує».
 - **SHA коміту зі скілом (BASE для Task D):** `f21226c` (`skills: add integrating-n8n-webhooks …`). У ньому є виправлення Task A, форма нотатки з
   Task B і всі три скіли; `/quotes` і перероблений виклик n8n — ще ні.
-- **Що скіл змінив у собі після прогонів:** _(заповнюється в Task D)_
+- **Що скіл змінив у собі після прогонів:** коміт `b264545` — `check-contract.mjs` на коді прогону A (без скіла)
+  бачив лише 2 FAIL із 9: шукав n8n за іменами з контракту (`N8N_WEBHOOK_*`, `/api/n8n/`), а агент A назвав змінну
+  `N8N_QUOTE_WEBHOOK_URL` і поклав колбек у `/api/quotes/[id]/callback`. Тепер скрипт розпізнає виклик n8n за
+  будь-якою `N8N_*` змінною (зокрема через проміжну `const`), колбек — за шляхом з `n8n`/`callback`/`webhook` або
+  заголовками `x-n8n-*`, C8 іде за будь-якою функцією з викликом n8n, C10 рахує `request.json()` як розбір. Після
+  зміни: `main` — ті самі 7 FAIL, шаблони й обидва погані фрагменти — ті самі результати, прогін A — 9 FAIL,
+  прогін B — 0. `SKILL.md` і `references/` не змінювали: агент B дотримався контракту повністю. Деталі — у
+  `docs/ab-validation.md`.
 
 **`check-contract.mjs` на коді `main`** (`git archive main` → `../leaddesk-main`):
 
@@ -273,5 +280,25 @@ exit=1
 **`check-contract.mjs` на фінальному коді** (після перенесення прогону B — 0 FAIL):
 
 ```
-(заповнюється в Task D)
+check-contract: . (робочий репозиторій, гілка ws04/dmudryk, після перенесення прогону B)
+scanned 42 code files + .env.example
+
+C1  no-test-webhook-url     PASS
+C2  no-public-n8n-env       PASS
+C3  env-contract            PASS
+C4  single-client-module    PASS
+C5  server-only-client      PASS
+C6  fetch-timeout           PASS
+C7  request-headers         PASS
+C8  action-uses-after       PASS
+C9  callback-raw-body       PASS
+C10 verify-before-parse     PASS
+C11 signature-compare       PASS
+C12 timestamp-window        PASS
+C13 callback-idempotency    PASS
+C14 no-edge-runtime         PASS
+C15 no-sensitive-logs       PASS
+
+0 FAIL, 15 PASS
+exit=0
 ```
