@@ -416,7 +416,8 @@ for (const r of results) {
   if (findings.length) {
     failed++;
     console.log(`${label}FAIL`);
-    for (const x of findings) console.log(`      ${x.path}${x.line ? `:${x.line}` : ""}  ${x.message}`);
+    // Every FAIL is printed as file:line; line 0 marks a whole-file problem (e.g. a missing file) and prints as :1.
+    for (const x of findings) console.log(`      ${x.path}:${x.line || 1}  ${x.message}${x.line ? "" : " (whole file)"}`);
   } else {
     const hidden = r.findings.length - findings.length;
     console.log(`${label}PASS${r.note ? `  (n/a: ${r.note})` : ""}${hidden ? `  (${hidden} finding(s) outside --changed-since)` : ""}`);
